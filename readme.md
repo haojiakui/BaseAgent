@@ -1,38 +1,85 @@
 #### 目的
-为了企业级架构式的捋清agent的流程，同时搞懂各个模块的功能，故写了这个项目
 
+这个分支用于学习 Agent 的最小运转流程。
 
-#### 目录分类
+它故意删除了 `skills/`、`tools/`、`mcp/`、`resources/`、`utils/` 等目录，只保留最小运行所需文件：
 
+```text
 BaseAgent/
-├── resources/        <-- 【AI 的字典】如 rules.md
-├── tools/            <-- 【AI 的武器】如 fetch_news_api.js (暴露给大模型调用)
-├── utils/            <-- 【你的工具箱】如 formatter.js (大模型不知道，只有 Node.js 用)
-├── skills/           <-- 【AI 的灵魂】如 news_skill.json
-├── mcp/              <-- 【翻译官】包装工具和资源
-└── agent.js          <-- 【引擎】
+├── .env
+├── .gitignore
+├── agent.js
+└── readme.md
+```
 
+这样做的目的不是否定这些目录，而是在学习早期先把注意力集中到 Agent 最核心的闭环上。
 
-#### 流程说明
+#### 这个 Demo 展示什么
 
-- `agent.js`：主循环引擎（入口）。
-- `skills/`：静态配置层（定义 Agent 边界与 SOP）。
-- `mcp/`：协议解析网关（连接大模型与本地代码）。
-- `tools/`：对外暴露的原子动作层。
-- `utils/`：对内屏蔽的基础基建层。
-- `resources/`：只读的上下文数据源。
+一个最小可用 Agent 至少包含：
 
-##### 1. 启动装配阶段
-1. `agent.js` 启动，首去 `skills/` 读取系统提示词（System Prompt）。
-2. `agent.js` 向 `mcp/` 请求可用工具和资源的 Schema 列表。
-3. `agent.js` 将 Prompt 与 Schema 拼装完成，准备就绪。
+1. 用户任务
+2. 系统提示词
+3. LLM 决策
+4. 本地工具
+5. 工具执行结果回填
+6. 再次请求 LLM 生成最终回答
 
-##### 2. 核心运转阶段 (ReAct Loop)
-1. **下发指令：** `agent.js` 将组装好的上下文发往 LLM（大模型）。
-2. **文本转路由：** LLM 返回工具调用 JSON 指令，`agent.js` 拦截该指令并转发给 `mcp/`。
-3. **接口映射：** `mcp/` 解析 JSON，找到对应的本地执行接口，将其透传给 `tools/` 目录下的具体函数。
-4. **底层执行：** - `tools/` 接收参数并开始执行核心逻辑。
-   - 若需数据清洗或通用运算，`tools/` 静默调用 `utils/`。
-   - 若需加载业务参考文本，`tools/` 访问 `resources/` 读取。
-5. **结果回溯：** `tools/` 执行完毕，将结果原路返回给 `mcp/`，再由 `mcp/` 封装标准格式交还 `agent.js`。
-6. **循环闭环：** `agent.js` 将执行结果追加到上下文中，再次发往 LLM，直至 LLM 给出最终自然语言结论，循环结束。
+当前 `agent.js` 把这些内容全部放在一个文件里，方便观察完整流程。
+
+#### 当前流程
+
+```text
+用户输入
+  ↓
+agent.js 把任务和系统提示词发送给 LLM
+  ↓
+LLM 返回 JSON 决策
+  ↓
+如果 JSON 中有 action，agent.js 调用本地工具
+  ↓
+agent.js 把工具结果作为观察结果追加回上下文
+  ↓
+LLM 基于工具结果输出 final
+```
+
+#### 内置工具
+
+当前只内置了一个工具：
+
+```text
+get_current_time
+```
+
+它用于获取当前北京时间。
+
+#### 运行方式
+
+先在 `.env` 中填写百炼 API Key：
+
+```text
+BAI_LIAN_KEY=你的 API Key
+BAI_LIAN_MODEL=deepseek-v4-pro
+```
+
+然后运行：
+
+```powershell
+node agent.js
+```
+
+也可以传入自己的任务：
+
+```powershell
+node agent.js "现在北京时间是多少？请调用工具后回答。"
+```
+
+`.env` 用来保存本地模型 Key，已经通过 `.gitignore` 排除，不应该提交到 Git。
+
+#### 学习重点
+
+这个分支只关注一件事：
+
+> 看清楚 Agent 如何完成“LLM 决策 -> 工具执行 -> 结果回填 -> 最终回答”的闭环。
+
+等这个闭环理解清楚后，再把系统提示词拆到 `skills/`，把工具拆到 `tools/`，把工具注册和路由拆到 `mcp/`，会更容易理解每个目录为什么存在。
